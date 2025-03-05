@@ -20,7 +20,7 @@ DiffRhythm (谛韵) egy mesterséges intelligencia alapú dallamgeneráló rends
 - **Többnyelvű támogatás** (angol, kínai és egyéb nyelvek)
 - **Rugalmas kimeneti formátumok** (WAV, MP3, OGG)
 
-## Telepítés 
+## Telepítés
 
 ### Előfeltételek
 
