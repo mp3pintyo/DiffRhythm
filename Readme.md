@@ -1,5 +1,12 @@
 # DiffRhythm - AI dallamgeneráló rendszer
 
+<div align="center">
+  <p>
+    <a href="README.md">Magyar</a> |
+    <a href="README_EN.md">English</a>
+  </p>
+</div>
+
 ![DiffRhythm Banner](https://github.com/ASLP-lab/DiffRhythm.github.io/blob/main/static/images/diffrhythem-logo-name.jpg?raw=true)
 
 DiffRhythm (谛韵) egy mesterséges intelligencia alapú dallamgeneráló rendszer, amely időzített dalszövegekből (LRC formátum) és referencia hanganyagból képes teljes dalokat létrehozni.

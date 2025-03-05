@@ -1,5 +1,12 @@
 # DiffRhythm - AI Music Generation System
 
+<div align="center">
+  <p>
+    <a href="README.md">Magyar</a> |
+    <a href="README_EN.md">English</a>
+  </p>
+</div>
+
 ![DiffRhythm Banner](https://github.com/ASLP-lab/DiffRhythm.github.io/blob/main/static/images/diffrhythem-logo-name.jpg?raw=true)
 
 DiffRhythm is an artificial intelligence-based melody generation system capable of creating complete songs from timed lyrics (LRC format) and reference audio.
