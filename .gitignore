@@ -1,3 +1,62 @@
-.cache/
+# Python cache fájlok
 __pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Környezet és virtuális környezetek
+.env
+.venv
+env/
+venv/
+ENV/
+.python-version
+.idea/
+.vscode/
+
+# Modellfájlok és cache
 pretrained/
+*.pt
+*.onnx
+*.npy
+*.bin
+*.tar.gz
+*.tflite
+*.pkl
+huggingface/
+cache/
+*.h5
+*.hdf5
+
+# Ideiglenes és generált fájlok
+*.tmp
+tmp/
+.temp/
+*.log
+logs/
+*.swp
+.DS_Store
+
+# Generált audio fájlok
+/src/prompt/*.wav
+/src/prompt/*.mp3
+/src/prompt/*.ogg
+*.wav
+*.mp3
+*.ogg
+*.wav.tar
+*.mp3.tar
+*.flac
+
+# Disztribúciós és build mappák
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
