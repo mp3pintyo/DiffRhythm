@@ -15,7 +15,7 @@ class PhonemeBpeTokenizer:
 
     def __init__(self, vacab_path="./g2p/g2p/vocab.json"):
         self.lang2backend = {
-            "zh": "cmn",
+            "zh": "zh",  # Changed from "cmn" to "zh"
             "ja": "ja",
             "en": "en-us",
             "fr": "fr-fr",
@@ -32,20 +32,44 @@ class PhonemeBpeTokenizer:
         LangSegment.setfilters(["en", "zh", "ja", "ko", "fr", "de"])
 
     def int_text_tokenizers(self):
+        # Initialize English first as our fallback
+        try:
+            self.text_tokenizers["en"] = TextTokenizer(language="en-us")
+        except Exception as e:
+            print(f"Error initializing English tokenizer: {e}")
+            raise RuntimeError("Cannot initialize the required English tokenizer")
+            
+        # Initialize other languages, falling back to English if they fail
         for key, value in self.lang2backend.items():
-            self.text_tokenizers[key] = TextTokenizer(language=value)
+            if key == "en":
+                continue  # Already initialized
+            try:
+                self.text_tokenizers[key] = TextTokenizer(language=value)
+            except Exception as e:
+                print(f"Warning: Could not initialize tokenizer for language {key} ({value}): {e}")
+                print(f"Using English tokenizer as fallback for {key}")
+                self.text_tokenizers[key] = self.text_tokenizers["en"]
 
     def tokenize(self, text, sentence, language):
+        # Always default to English if language is not supported
+        if language not in self.text_tokenizers:
+            print(f"Language {language} not supported, falling back to English")
+            language = "en"
 
         # 1. convert text to phoneme
         phonemes = []
         if language == "auto":
+            # Limit language detection to supported languages
+            supported_langs = list(self.text_tokenizers.keys())
+            LangSegment.setfilters(supported_langs)
             seglist = LangSegment.getTexts(text)
             tmp_ph = []
             for seg in seglist:
+                # Make sure we use a supported language
+                seg_lang = seg["lang"] if seg["lang"] in self.text_tokenizers else "en"
                 tmp_ph.append(
                     self._clean_text(
-                        seg["text"], sentence, seg["lang"], ["cjekfd_cleaners"]
+                        seg["text"], sentence, seg_lang, ["cjekfd_cleaners"]
                     )
                 )
             phonemes = "|_|".join(tmp_ph)

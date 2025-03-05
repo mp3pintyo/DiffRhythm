@@ -80,19 +80,44 @@ def decode_audio(latents, vae_model, chunked=False, overlap=32, chunk_size=128):
             y_final[:,:,t_start:t_end] = y_chunk[:,:,chunk_start:chunk_end]
         return y_final
 
-def prepare_model(device):
+def prepare_model(device, low_memory=False):
     # prepare cfm model
     dit_ckpt_path = hf_hub_download(repo_id="ASLP-lab/DiffRhythm-base", filename="cfm_model.pt", cache_dir="./pretrained")
     dit_config_path = "./config/diffrhythm-1b.json"
     with open(dit_config_path) as f:
         model_config = json.load(f)
+    
+    # Optional memory optimization
+    if low_memory:
+        print("Low memory mode enabled - using reduced model size")
+        # Map config parameters to DiT parameters
+        if "hidden_size" in model_config["model"]:
+            model_config["model"]["dim"] = model_config["model"]["hidden_size"] // 2
+            del model_config["model"]["hidden_size"]
+        elif "dim" in model_config["model"]:
+            model_config["model"]["dim"] = model_config["model"]["dim"] // 2
+            
+        if "n_heads" in model_config["model"]:
+            model_config["model"]["heads"] = max(model_config["model"]["n_heads"] // 2, 1)
+            del model_config["model"]["n_heads"]
+        elif "heads" in model_config["model"]:
+            model_config["model"]["heads"] = max(model_config["model"]["heads"] // 2, 1)
+    else:
+        # Just map parameter names without reducing size
+        if "hidden_size" in model_config["model"]:
+            model_config["model"]["dim"] = model_config["model"]["hidden_size"]
+            del model_config["model"]["hidden_size"]
+        if "n_heads" in model_config["model"]:
+            model_config["model"]["heads"] = model_config["model"]["n_heads"]
+            del model_config["model"]["n_heads"]
+    
     dit_model_cls = DiT
     cfm = CFM(
                 transformer=dit_model_cls(**model_config["model"]),
                 num_channels=model_config["model"]['mel_dim']
              )
     cfm = cfm.to(device)
-    cfm = load_checkpoint(cfm, dit_ckpt_path, device=device, use_ema=False)
+    cfm = load_checkpoint(cfm, dit_ckpt_path, device=device, use_ema=False, resize=low_memory)
     
     # prepare tokenizer
     tokenizer = CNENTokenizer()
@@ -133,16 +158,24 @@ def get_style_prompt(model, wav_path):
     else:
         raise ValueError("Unsupported file format: {}".format(ext))
     
+    # Handle short audio files by looping them instead of raising an error
     if audio_len < 10:
-        print(f"Warning: The audio file {wav_path} is too short ({audio_len:.2f} seconds). Expected at least 10 seconds.")
-    
-    assert audio_len >= 10
-    
-    mid_time = audio_len // 2
-    start_time = mid_time - 5
-    wav, _ = librosa.load(wav_path, sr=24000, offset=start_time, duration=10)
-    
-    wav = torch.tensor(wav).unsqueeze(0).to(model.device)
+        print(f"Warning: The audio file {wav_path} is too short ({audio_len:.2f} seconds). Looping it to reach 10 seconds.")
+        # Load the full audio
+        wav, sr = librosa.load(wav_path, sr=24000)
+        # Calculate how many times we need to repeat it
+        repeat_times = int(np.ceil(10.0 / audio_len))
+        # Repeat the audio
+        wav = np.tile(wav, repeat_times)
+        # Take exactly 10 seconds (240000 samples at 24kHz)
+        wav = wav[:240000]
+        wav = torch.tensor(wav).unsqueeze(0).to(model.device)
+    else:
+        # Original code for longer audio files
+        mid_time = audio_len // 2
+        start_time = mid_time - 5
+        wav, _ = librosa.load(wav_path, sr=24000, offset=start_time, duration=10)
+        wav = torch.tensor(wav).unsqueeze(0).to(model.device)
     
     with torch.no_grad():
         audio_emb = mulan(wavs = wav) # [1, 512]
@@ -233,30 +266,71 @@ def get_lrc_token(text, tokenizer, device):
     
     return lrc_emb, normalized_start_time
 
-def load_checkpoint(model, ckpt_path, device, use_ema=True):
+def load_checkpoint(model, ckpt_path, device, use_ema=True, resize=False):
     if device == "cuda":
         model = model.half()
 
     ckpt_type = ckpt_path.split(".")[-1]
     if ckpt_type == "safetensors":
         from safetensors.torch import load_file
-
         checkpoint = load_file(ckpt_path)
     else:
         checkpoint = torch.load(ckpt_path, weights_only=True)
 
+    # Create state dict with appropriate keys
     if use_ema:
         if ckpt_type == "safetensors":
             checkpoint = {"ema_model_state_dict": checkpoint}
-        checkpoint["model_state_dict"] = {
+        state_dict = {
             k.replace("ema_model.", ""): v
             for k, v in checkpoint["ema_model_state_dict"].items()
             if k not in ["initted", "step"]
         }
-        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     else:
         if ckpt_type == "safetensors":
             checkpoint = {"model_state_dict": checkpoint}
-        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+        state_dict = checkpoint["model_state_dict"]
+    
+    # Resize weights if needed (for low memory mode)
+    if resize:
+        print("Resizing model weights for low memory mode")
+        # Create a new state dict with resized weights
+        resized_dict = {}
+        model_dict = model.state_dict()
+        
+        for name, param in state_dict.items():
+            if name in model_dict:
+                model_shape = model_dict[name].shape
+                checkpoint_shape = param.shape
+                
+                if model_shape != checkpoint_shape:
+                    print(f"Resizing {name}: {checkpoint_shape} -> {model_shape}")
+                    
+                    # For 2D weight matrices (linear layers)
+                    if len(model_shape) == 2 and len(checkpoint_shape) == 2:
+                        # Use center cropping for weight matrices
+                        new_param = param[:model_shape[0], :model_shape[1]]
+                    
+                    # For 1D bias vectors
+                    elif len(model_shape) == 1 and len(checkpoint_shape) == 1:
+                        new_param = param[:model_shape[0]]
+                    
+                    # For 3D convolution kernels
+                    elif len(model_shape) == 3 and len(checkpoint_shape) == 3:
+                        new_param = param[:model_shape[0], :model_shape[1], :model_shape[2]]
+                    
+                    else:
+                        print(f"Warning: Unsupported resize for {name}, skipping")
+                        continue
+                        
+                    resized_dict[name] = new_param
+                else:
+                    resized_dict[name] = param
+        
+        # Load the resized weights
+        model.load_state_dict(resized_dict, strict=False)
+    else:
+        # Regular loading without resizing
+        model.load_state_dict(state_dict, strict=False)
 
     return model.to(device)

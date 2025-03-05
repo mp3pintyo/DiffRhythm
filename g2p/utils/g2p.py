@@ -15,7 +15,7 @@ import sys
 separator = Separator(word=" _ ", syllable="|", phone=" ")
 
 phonemizer_zh = EspeakBackend(
-    "cmn", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
+    "zh", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
 )
 # phonemizer_zh.separator = separator
 
@@ -27,16 +27,7 @@ phonemizer_en = EspeakBackend(
 )
 # phonemizer_en.separator = separator
 
-phonemizer_ja = EspeakBackend(
-    "ja", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
-)
-# phonemizer_ja.separator = separator
-
-phonemizer_ko = EspeakBackend(
-    "ko", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
-)
-# phonemizer_ko.separator = separator
-
+# Only keep the languages that are supported by the espeak installation
 phonemizer_fr = EspeakBackend(
     "fr-fr",
     preserve_punctuation=False,
@@ -53,10 +44,8 @@ phonemizer_de = EspeakBackend(
 
 lang2backend = {
     "zh": phonemizer_zh,
-    "ja": phonemizer_ja,
     "en": phonemizer_en,
     "fr": phonemizer_fr,
-    "ko": phonemizer_ko,
     "de": phonemizer_de,
 }
 
@@ -66,6 +55,11 @@ token = json.loads(json_data)
 
 
 def phonemizer_g2p(text, language):
+    # Default to English if the language is not supported
+    if language not in lang2backend:
+        print(f"Warning: Language '{language}' not supported, falling back to English")
+        language = "en"
+        
     langbackend = lang2backend[language]
     phonemes = _phonemize(
         langbackend,
